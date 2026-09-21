@@ -1,6 +1,6 @@
 # SPEC 01 — Cuatro fantasmas con patrones de movimiento
 
-> **Status:** Draft
+> **Status:** Approved
 > **Depends on:** (ninguno)
 > **Date:** 2026-09-21
 > **Objective:** Añadir cuatro fantasmas con patrones de movimiento diferenciados, uno de ellos persigue a Pac-Man agresivamente, con fases de scatter y salida escalonada.
