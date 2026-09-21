@@ -128,9 +128,45 @@ function movePacman( game ) {
   wrapTunnel( p, width );
 }
 
+// Objetivo del fantasma segun fase (scatter/chase) y su patron.
+function ghostTarget( game, g ) {
+  const cfg = GHOST_CONFIG[ g.kind ];
+  if ( game.phase === 'scatter' ) return cfg.corner;
+
+  const p = game.pacman;
+  const px = Math.round( p.x );
+  const py = Math.round( p.y );
+
+  if ( g.kind === 'chaser' ) {
+    // Persigue la posicion redondeada de Pac-Man.
+    return { x: px, y: py };
+  }
+
+  if ( g.kind === 'ambusher' ) {
+    // 4 celdas hacia delante de Pac-Man segun su direccion.
+    const d = DIRS[ p.dir ] || { x: 0, y: 0 };
+    return { x: px + d.x * 4, y: py + d.y * 4 };
+  }
+
+  if ( g.kind === 'flanker' ) {
+    // cazador + 2 x (puntoAhead(2) - cazador).
+    const chaser = game.ghosts.find( ( h ) => h.kind === 'chaser' );
+    const d = DIRS[ p.dir ] || { x: 0, y: 0 };
+    const ahead = { x: px + d.x * 2, y: py + d.y * 2 };
+    const cx = Math.round( chaser.x );
+    const cy = Math.round( chaser.y );
+    return { x: cx + 2 * ( ahead.x - cx ), y: cy + 2 * ( ahead.y - cy ) };
+  }
+
+  // shy: se acerca a Pac-Man solo si esta lejos (< 8 celdas).
+  const dist = Math.abs( g.x - px ) + Math.abs( g.y - py );
+  if ( dist > 8 ) return { x: px, y: py };
+  return cfg.corner;
+}
+
 function decideGhost( game, g ) {
   const grid = game.grid;
-  const p = game.pacman;
+  const target = ghostTarget( game, g );
 
   const options = Object.keys( DIRS ).filter(
     ( dir ) => dir !== OPPOSITE[ g.dir ] && canMove( grid, g.x, g.y, dir, 'ghost' )
@@ -138,25 +174,20 @@ function decideGhost( game, g ) {
   // Sin salida (callejon): permitir el giro de 180.
   const choices = options.length ? options : [ '' + OPPOSITE[ g.dir ] ];
 
-  if ( g.kind === 'hunter' ) {
-    const px = Math.round( p.x );
-    const py = Math.round( p.y );
-    let best = choices[ 0 ];
-    let bestDist = Infinity;
-    for ( const dir of choices ) {
-      const d = DIRS[ dir ];
-      const nx = g.x + d.x;
-      const ny = g.y + d.y;
-      const dist = Math.abs( nx - px ) + Math.abs( ny - py );
-      if ( dist < bestDist ) {
-        bestDist = dist;
-        best = dir;
-      }
+  // Seleccion codiciosa: minimizar la distancia Manhattan al objetivo.
+  let best = choices[ 0 ];
+  let bestDist = Infinity;
+  for ( const dir of choices ) {
+    const d = DIRS[ dir ];
+    const nx = g.x + d.x;
+    const ny = g.y + d.y;
+    const dist = Math.abs( nx - target.x ) + Math.abs( ny - target.y );
+    if ( dist < bestDist ) {
+      bestDist = dist;
+      best = dir;
     }
-    g.dir = best;
-  } else {
-    g.dir = choices[ Math.floor( Math.random() * choices.length ) ];
   }
+  g.dir = best;
 }
 
 function moveGhost( game, g ) {
