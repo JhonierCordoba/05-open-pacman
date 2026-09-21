@@ -137,8 +137,7 @@ function movePacman( game ) {
       grid[ p.y ][ p.x ] = 0;
       game.score += POWER_PELLET_SCORE;
       game.dotsRemaining--;
-      game.powerOn = true;
-      game.powerLeft = POWER_PELLET_SECONDS;
+      startPower( game );
     }
     // Si no puede seguir, se detiene en la celda.
     if ( !canMove( grid, p.x, p.y, p.dir, 'pacman' ) ) return;
@@ -148,6 +147,35 @@ function movePacman( game ) {
   p.x += d.x * p.speed;
   p.y += d.y * p.speed;
   wrapTunnel( p, width );
+}
+
+// Activa el modo frightened. Reinicia el contador (no se acumula).
+function startPower( game ) {
+  game.powerOn = true;
+  game.powerLeft = POWER_PELLET_SECONDS;
+  game.fearChain = 0;
+  game.pacman.speed = FRIGHT_SPEED;
+  game.ghosts.forEach( ( g ) => {
+    g.state = 'frightened';
+    g.speed = FRIGHT_GHOST_SPEED;
+  } );
+}
+
+// Termina el modo frightened: velocidades normales y los ojos pendientes
+// reaparecen como fantasma normal saliendo escalonado.
+function endPower( game ) {
+  game.powerOn = false;
+  game.pacman.speed = PACMAN_SPEED;
+  game.ghosts.forEach( ( g ) => {
+    g.speed = GHOST_CONFIG[ g.kind ].speed;
+    if ( g.state === 'eyes' ) {
+      g.state = 'normal';
+      g.released = false;
+      g.releaseAt = game.time + GHOST_CONFIG[ g.kind ].releaseAt;
+    } else {
+      g.state = 'normal';
+    }
+  } );
 }
 
 // Objetivo del fantasma segun fase (scatter/chase) y su patron.
@@ -186,16 +214,8 @@ function ghostTarget( game, g ) {
   return cfg.corner;
 }
 
-function decideGhost( game, g, target ) {
-  const grid = game.grid;
-
-  const options = Object.keys( DIRS ).filter(
-    ( dir ) => dir !== OPPOSITE[ g.dir ] && canMove( grid, g.x, g.y, dir, 'ghost' )
-  );
-  // Sin salida (callejon): permitir el giro de 180.
-  const choices = options.length ? options : [ '' + OPPOSITE[ g.dir ] ];
-
-  // Seleccion codiciosa: minimizar la distancia Manhattan al objetivo.
+// Direccion codiciosa: minimizar la distancia Manhattan al objetivo.
+function greedyDir( g, choices, target ) {
   let best = choices[ 0 ];
   let bestDist = Infinity;
   for ( const dir of choices ) {
@@ -208,7 +228,43 @@ function decideGhost( game, g, target ) {
       best = dir;
     }
   }
-  g.dir = best;
+  return best;
+}
+
+// Elige la direccion del fantasma segun su estado (prioridad):
+//   eyes -> volver a su celda del pen
+//   dentro del pen -> salir (PEN_EXIT)
+//   frightened -> aleatoria entre validas sin retroceso
+//   resto -> IA normal (scatter/chase)
+function decideGhost( game, g ) {
+  const grid = game.grid;
+
+  const options = Object.keys( DIRS ).filter(
+    ( dir ) => dir !== OPPOSITE[ g.dir ] && canMove( grid, g.x, g.y, dir, 'ghost' )
+  );
+  // Sin salida (callejon): permitir el giro de 180.
+  const choices = options.length ? options : [ '' + OPPOSITE[ g.dir ] ];
+
+  if ( g.state === 'eyes' ) {
+    g.dir = greedyDir( g, choices, g.home );
+    return;
+  }
+
+  // Dentro del pen (incluida la puerta): objetivo fijo de salida.
+  const insidePen =
+    g.x >= PEN_BOUNDS.minX && g.x <= PEN_BOUNDS.maxX &&
+    g.y >= PEN_BOUNDS.minY && g.y <= PEN_BOUNDS.maxY;
+  if ( insidePen ) {
+    g.dir = greedyDir( g, choices, PEN_EXIT );
+    return;
+  }
+
+  if ( g.state === 'frightened' ) {
+    g.dir = choices[ Math.floor( Math.random() * choices.length ) ];
+    return;
+  }
+
+  g.dir = greedyDir( g, choices, ghostTarget( game, g ) );
 }
 
 function moveGhost( game, g ) {
@@ -225,15 +281,7 @@ function moveGhost( game, g ) {
     g.x = Math.round( g.x );
     g.y = Math.round( g.y );
 
-    // Dentro del pen (incluida la puerta): objetivo fijo de salida, la celda
-    // abierta justo encima de la puerta. Al salir de esas filas, decideGhost
-    // retoma el objetivo normal (scatter/chase).
-    const insidePen =
-      g.x >= PEN_BOUNDS.minX && g.x <= PEN_BOUNDS.maxX &&
-      g.y >= PEN_BOUNDS.minY && g.y <= PEN_BOUNDS.maxY;
-    const target = insidePen ? PEN_EXIT : ghostTarget( game, g );
-
-    decideGhost( game, g, target );
+    decideGhost( game, g );
     if ( !canMove( grid, g.x, g.y, g.dir, 'ghost' ) ) return;
   }
 
@@ -270,7 +318,7 @@ function update( game ) {
 
   if ( game.powerOn ) {
     game.powerLeft -= DT;
-    if ( game.powerLeft <= 0 ) game.powerOn = false;
+    if ( game.powerLeft <= 0 ) endPower( game );
   }
 
   movePacman( game );
@@ -278,6 +326,7 @@ function update( game ) {
 
   for ( const g of game.ghosts ) {
     if ( collides( game.pacman, g ) ) {
+      if ( game.powerOn ) continue; // invencible: nunca se resta vida
       game.lives--;
       if ( game.lives <= 0 ) {
         game.state = 'lost';
