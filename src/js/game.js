@@ -297,15 +297,23 @@ function moveGhost( game, g ) {
 }
 
 function resetPositions( game ) {
+  // Limpieza defensiva del efecto (con invencibilidad no deberia dispararse).
+  game.powerOn = false;
+  game.powerLeft = 0;
+  game.fearChain = 0;
+
   const p = game.pacman;
   p.x = PACMAN_START.x;
   p.y = PACMAN_START.y;
   p.dir = 'left';
   p.nextDir = null;
+  p.speed = PACMAN_SPEED;
   game.ghosts.forEach( ( g, i ) => {
     g.x = GHOST_STARTS[ i ].x;
     g.y = GHOST_STARTS[ i ].y;
     g.dir = 'up';
+    g.state = 'normal';
+    g.speed = GHOST_CONFIG[ g.kind ].speed;
     // Re-escalonar la salida sobre el tiempo actual de la partida.
     g.released = false;
     g.releaseAt = game.time + GHOST_CONFIG[ g.kind ].releaseAt;
