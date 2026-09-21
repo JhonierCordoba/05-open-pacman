@@ -40,6 +40,7 @@ function createGame() {
     score: 0,
     lives: 3,
     dotsRemaining: dots,
+    time: 0,
     grid,
     pacman: {
       x: PACMAN_START.x,
@@ -193,6 +194,10 @@ function collides( a, b ) {
 }
 
 function update( game ) {
+  game.time += DT;
+  const cycle = SCATTER_SECONDS + CHASE_SECONDS;
+  game.phase = game.time % cycle < SCATTER_SECONDS ? 'scatter' : 'chase';
+
   movePacman( game );
   game.ghosts.forEach( ( g ) => moveGhost( game, g ) );
 
