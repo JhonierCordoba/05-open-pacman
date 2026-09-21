@@ -66,14 +66,17 @@ function drawDoor( ctx, grid ) {
   ctx.stroke();
 }
 
-function drawDots( ctx, grid ) {
+function drawDots( ctx, grid, frame ) {
   ctx.fillStyle = DOT_COLOR;
   for ( let y = 0; y < grid.length; y++ ) {
     for ( let x = 0; x < grid[ 0 ].length; x++ ) {
-      if ( grid[ y ][ x ] !== 2 ) continue;
+      const v = grid[ y ][ x ];
+      if ( v !== 2 && v !== 4 ) continue;
       const { cx, cy } = cellCenter( x, y );
       ctx.beginPath();
-      ctx.arc( cx, cy, 2.5, 0, Math.PI * 2 );
+      // Power pellet: punto grande con pulso (radio 5-6).
+      const r = v === 4 ? 5.5 + Math.sin( frame * 0.15 ) * 0.5 : 2.5;
+      ctx.arc( cx, cy, r, 0, Math.PI * 2 );
       ctx.fill();
     }
   }
@@ -98,15 +101,40 @@ function drawPacman( ctx, p, frame ) {
   ctx.fill();
 }
 
-function drawGhost( ctx, g, color ) {
+function drawGhost( ctx, g, color, game, frame ) {
   const { cx, cy } = cellCenter( g.x, g.y );
   const r = TILE / 2 - 1;
-  const top = cy - r;
   const bottom = cy + r;
   const left = cx - r;
   const right = cx + r;
 
-  ctx.fillStyle = color;
+  const dir = DIRS[ g.dir ] || { x: 0, y: 0 };
+
+  // Ojos: solo ojos blancos sin cuerpo, mirando segun la direccion.
+  if ( g.state === 'eyes' ) {
+    const ex = dir.x * 2.2;
+    const ey = dir.y * 2.2;
+    for ( const off of [ -4, 4 ] ) {
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.arc( cx + off, cy, 3.2, 0, Math.PI * 2 );
+      ctx.fill();
+      ctx.fillStyle = '#0000bb';
+      ctx.beginPath();
+      ctx.arc( cx + off + ex, cy + ey, 1.4, 0, Math.PI * 2 );
+      ctx.fill();
+    }
+    return;
+  }
+
+  // Frightened: cuerpo azul; parpadeo azul/blanco los 2 ultimos segundos.
+  let bodyColor = color;
+  if ( g.state === 'frightened' ) {
+    const blink = game.powerLeft <= BLINK_SECONDS && Math.floor( frame ) % 2 === 1;
+    bodyColor = blink ? '#fff' : '#2121ff';
+  }
+
+  ctx.fillStyle = bodyColor;
   ctx.beginPath();
   ctx.arc( cx, cy - 1, r, Math.PI, 0, false ); // cabeza
   ctx.lineTo( right, bottom );
@@ -118,10 +146,11 @@ function drawGhost( ctx, g, color ) {
   ctx.closePath();
   ctx.fill();
 
-  // ojos mirando segun direccion
-  const dir = DIRS[ g.dir ] || { x: 0, y: 0 };
-  const ex = dir.x * 1.6;
-  const ey = dir.y * 1.6;
+  // Cara: frightened -> pupilas pequenas.
+  const dotOff = g.state === 'frightened' ? 2 : 1.6;
+  const ex = dir.x * dotOff;
+  const ey = dir.y * dotOff;
+  const pupilR = g.state === 'frightened' ? 1.1 : 1.5;
   for ( const off of [ -3.5, 3.5 ] ) {
     ctx.fillStyle = '#fff';
     ctx.beginPath();
@@ -129,7 +158,7 @@ function drawGhost( ctx, g, color ) {
     ctx.fill();
     ctx.fillStyle = '#0000bb';
     ctx.beginPath();
-    ctx.arc( cx + off + ex, cy - 1 + ey, 1.5, 0, Math.PI * 2 );
+    ctx.arc( cx + off + ex, cy - 1 + ey, pupilR, 0, Math.PI * 2 );
     ctx.fill();
   }
 }
@@ -156,9 +185,9 @@ function draw( ctx, game, frame ) {
 
   drawWalls( ctx, grid );
   drawDoor( ctx, grid );
-  drawDots( ctx, grid );
+  drawDots( ctx, grid, frame );
   drawPacman( ctx, game.pacman, frame );
-  game.ghosts.forEach( ( g, i ) => drawGhost( ctx, g, GHOST_COLORS[ i ] || '#ff0000' ) );
+  game.ghosts.forEach( ( g, i ) => drawGhost( ctx, g, GHOST_COLORS[ i ] || '#ff0000', game, frame ) );
   drawHUD( ctx, game, W );
 }
 

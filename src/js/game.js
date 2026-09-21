@@ -17,6 +17,14 @@ const SCATTER_SECONDS = 7;
 const CHASE_SECONDS = 20;
 const DT = 1 / 60;
 
+const POWER_PELLET_SECONDS = 6;
+const POWER_PELLET_SCORE = 50;
+const FRIGHT_SPEED = 1 / 6;        // pacman durante el efecto (alinea cada 6 frames)
+const FRIGHT_GHOST_SPEED = 1 / 15; // fantasmas frightened
+const EYES_SPEED = 1 / 7;          // ojos volviendo al pen
+const BLINK_SECONDS = 2;
+const FEAR_CHAIN = [ 200, 400, 800, 1600 ];
+
 // Por tipo de fantasma: velocidad, retardo de salida (s) y esquina de scatter.
 const GHOST_CONFIG = {
   chaser:   { speed: 1 / 10, releaseAt: 0, corner: { x: 26, y: 0  } },
@@ -33,13 +41,16 @@ function createGame() {
   grid[ PACMAN_START.y ][ PACMAN_START.x ] = 0;
 
   let dots = 0;
-  for ( const row of grid ) for ( const v of row ) if ( v === 2 ) dots++;
+  for ( const row of grid ) for ( const v of row ) if ( v === 2 || v === 4 ) dots++;
 
   return {
     state: 'start',
     score: 0,
     lives: 3,
     dotsRemaining: dots,
+    powerOn: false,   // efecto activo
+    powerLeft: 0,     // segundos restantes
+    fearChain: 0,     // indice en FEAR_CHAIN (0..3)
     time: 0,
     grid,
     pacman: {
@@ -49,7 +60,7 @@ function createGame() {
       nextDir: null,
       speed: PACMAN_SPEED,
     },
-    ghosts: GHOST_STARTS.map( ( g ) => {
+    ghosts: GHOST_STARTS.map( ( g, i ) => {
       const cfg = GHOST_CONFIG[ g.kind ];
       return {
         x: g.x,
@@ -59,6 +70,8 @@ function createGame() {
         releaseAt: cfg.releaseAt,
         released: false,
         kind: g.kind,
+        state: 'normal',        // 'normal' | 'frightened' | 'eyes'
+        home: GHOST_STARTS[ i ],
       };
     } ),
   };
@@ -66,6 +79,15 @@ function createGame() {
 
 function aligned( v ) {
   return Math.abs( v - Math.round( v ) ) < 1e-3;
+}
+
+// Recoloca a un actor en la celda mas cercana. Se usa antes de cambiar la
+// velocidad: las fracciones unitarias solo conservan la alineacion a celdas
+// si se parte de una celda (si no, el actor nunca vuelve a alinearse y se
+// mete por las paredes).
+function snapToCell( a ) {
+  a.x = Math.round( a.x );
+  a.y = Math.round( a.y );
 }
 
 // Una celda es muro para el actor dado?
@@ -113,10 +135,18 @@ function movePacman( game ) {
       p.nextDir = null;
     }
     // Comer dot.
-    if ( grid[ p.y ][ p.x ] === 2 ) {
+    const cell = grid[ p.y ][ p.x ];
+    if ( cell === 2 ) {
       grid[ p.y ][ p.x ] = 0;
       game.score += 10;
       game.dotsRemaining--;
+    }
+    // Comer power pellet: activa el efecto.
+    if ( cell === 4 ) {
+      grid[ p.y ][ p.x ] = 0;
+      game.score += POWER_PELLET_SCORE;
+      game.dotsRemaining--;
+      startPower( game );
     }
     // Si no puede seguir, se detiene en la celda.
     if ( !canMove( grid, p.x, p.y, p.dir, 'pacman' ) ) return;
@@ -126,6 +156,39 @@ function movePacman( game ) {
   p.x += d.x * p.speed;
   p.y += d.y * p.speed;
   wrapTunnel( p, width );
+}
+
+// Activa el modo frightened. Reinicia el contador (no se acumula).
+function startPower( game ) {
+  game.powerOn = true;
+  game.powerLeft = POWER_PELLET_SECONDS;
+  game.fearChain = 0;
+  snapToCell( game.pacman );
+  game.pacman.speed = FRIGHT_SPEED;
+  game.ghosts.forEach( ( g ) => {
+    snapToCell( g );
+    g.state = 'frightened';
+    g.speed = FRIGHT_GHOST_SPEED;
+  } );
+}
+
+// Termina el modo frightened: velocidades normales y los ojos pendientes
+// reaparecen como fantasma normal saliendo escalonado.
+function endPower( game ) {
+  game.powerOn = false;
+  snapToCell( game.pacman );
+  game.pacman.speed = PACMAN_SPEED;
+  game.ghosts.forEach( ( g ) => {
+    snapToCell( g );
+    g.speed = GHOST_CONFIG[ g.kind ].speed;
+    if ( g.state === 'eyes' ) {
+      g.state = 'normal';
+      g.released = false;
+      g.releaseAt = game.time + GHOST_CONFIG[ g.kind ].releaseAt;
+    } else {
+      g.state = 'normal';
+    }
+  } );
 }
 
 // Objetivo del fantasma segun fase (scatter/chase) y su patron.
@@ -164,16 +227,8 @@ function ghostTarget( game, g ) {
   return cfg.corner;
 }
 
-function decideGhost( game, g, target ) {
-  const grid = game.grid;
-
-  const options = Object.keys( DIRS ).filter(
-    ( dir ) => dir !== OPPOSITE[ g.dir ] && canMove( grid, g.x, g.y, dir, 'ghost' )
-  );
-  // Sin salida (callejon): permitir el giro de 180.
-  const choices = options.length ? options : [ '' + OPPOSITE[ g.dir ] ];
-
-  // Seleccion codiciosa: minimizar la distancia Manhattan al objetivo.
+// Direccion codiciosa: minimizar la distancia Manhattan al objetivo.
+function greedyDir( g, choices, target ) {
   let best = choices[ 0 ];
   let bestDist = Infinity;
   for ( const dir of choices ) {
@@ -186,7 +241,43 @@ function decideGhost( game, g, target ) {
       best = dir;
     }
   }
-  g.dir = best;
+  return best;
+}
+
+// Elige la direccion del fantasma segun su estado (prioridad):
+//   eyes -> volver a su celda del pen
+//   dentro del pen -> salir (PEN_EXIT)
+//   frightened -> aleatoria entre validas sin retroceso
+//   resto -> IA normal (scatter/chase)
+function decideGhost( game, g ) {
+  const grid = game.grid;
+
+  const options = Object.keys( DIRS ).filter(
+    ( dir ) => dir !== OPPOSITE[ g.dir ] && canMove( grid, g.x, g.y, dir, 'ghost' )
+  );
+  // Sin salida (callejon): permitir el giro de 180.
+  const choices = options.length ? options : [ '' + OPPOSITE[ g.dir ] ];
+
+  if ( g.state === 'eyes' ) {
+    g.dir = greedyDir( g, choices, g.home );
+    return;
+  }
+
+  // Dentro del pen (incluida la puerta): objetivo fijo de salida.
+  const insidePen =
+    g.x >= PEN_BOUNDS.minX && g.x <= PEN_BOUNDS.maxX &&
+    g.y >= PEN_BOUNDS.minY && g.y <= PEN_BOUNDS.maxY;
+  if ( insidePen ) {
+    g.dir = greedyDir( g, choices, PEN_EXIT );
+    return;
+  }
+
+  if ( g.state === 'frightened' ) {
+    g.dir = choices[ Math.floor( Math.random() * choices.length ) ];
+    return;
+  }
+
+  g.dir = greedyDir( g, choices, ghostTarget( game, g ) );
 }
 
 function moveGhost( game, g ) {
@@ -203,15 +294,12 @@ function moveGhost( game, g ) {
     g.x = Math.round( g.x );
     g.y = Math.round( g.y );
 
-    // Dentro del pen (incluida la puerta): objetivo fijo de salida, la celda
-    // abierta justo encima de la puerta. Al salir de esas filas, decideGhost
-    // retoma el objetivo normal (scatter/chase).
-    const insidePen =
-      g.x >= PEN_BOUNDS.minX && g.x <= PEN_BOUNDS.maxX &&
-      g.y >= PEN_BOUNDS.minY && g.y <= PEN_BOUNDS.maxY;
-    const target = insidePen ? PEN_EXIT : ghostTarget( game, g );
+    // Ojos que llegan a su celda del pen esperan ahí hasta el final del efecto.
+    if ( g.state === 'eyes' && game.powerOn && g.x === g.home.x && g.y === g.home.y ) {
+      return;
+    }
 
-    decideGhost( game, g, target );
+    decideGhost( game, g );
     if ( !canMove( grid, g.x, g.y, g.dir, 'ghost' ) ) return;
   }
 
@@ -222,15 +310,23 @@ function moveGhost( game, g ) {
 }
 
 function resetPositions( game ) {
+  // Limpieza defensiva del efecto (con invencibilidad no deberia dispararse).
+  game.powerOn = false;
+  game.powerLeft = 0;
+  game.fearChain = 0;
+
   const p = game.pacman;
   p.x = PACMAN_START.x;
   p.y = PACMAN_START.y;
   p.dir = 'left';
   p.nextDir = null;
+  p.speed = PACMAN_SPEED;
   game.ghosts.forEach( ( g, i ) => {
     g.x = GHOST_STARTS[ i ].x;
     g.y = GHOST_STARTS[ i ].y;
     g.dir = 'up';
+    g.state = 'normal';
+    g.speed = GHOST_CONFIG[ g.kind ].speed;
     // Re-escalonar la salida sobre el tiempo actual de la partida.
     g.released = false;
     g.releaseAt = game.time + GHOST_CONFIG[ g.kind ].releaseAt;
@@ -246,11 +342,27 @@ function update( game ) {
   const cycle = SCATTER_SECONDS + CHASE_SECONDS;
   game.phase = game.time % cycle < SCATTER_SECONDS ? 'scatter' : 'chase';
 
+  if ( game.powerOn ) {
+    game.powerLeft -= DT;
+    if ( game.powerLeft <= 0 ) endPower( game );
+  }
+
   movePacman( game );
   game.ghosts.forEach( ( g ) => moveGhost( game, g ) );
 
   for ( const g of game.ghosts ) {
     if ( collides( game.pacman, g ) ) {
+      if ( game.powerOn ) {
+        // Comer un fantasma frightened: puntos en cadena y se vuelve ojos.
+        if ( g.state === 'frightened' ) {
+          game.score += FEAR_CHAIN[ game.fearChain ];
+          game.fearChain = Math.min( game.fearChain + 1, 3 );
+          snapToCell( g );
+          g.state = 'eyes';
+          g.speed = EYES_SPEED;
+        }
+        continue; // invencible: nunca se resta vida
+      }
       game.lives--;
       if ( game.lives <= 0 ) {
         game.state = 'lost';
