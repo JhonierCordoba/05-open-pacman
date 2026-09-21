@@ -164,9 +164,8 @@ function ghostTarget( game, g ) {
   return cfg.corner;
 }
 
-function decideGhost( game, g ) {
+function decideGhost( game, g, target ) {
   const grid = game.grid;
-  const target = ghostTarget( game, g );
 
   const options = Object.keys( DIRS ).filter(
     ( dir ) => dir !== OPPOSITE[ g.dir ] && canMove( grid, g.x, g.y, dir, 'ghost' )
@@ -203,7 +202,16 @@ function moveGhost( game, g ) {
   if ( aligned( g.x ) && aligned( g.y ) ) {
     g.x = Math.round( g.x );
     g.y = Math.round( g.y );
-    decideGhost( game, g );
+
+    // Dentro del pen (incluida la puerta): objetivo fijo de salida, la celda
+    // abierta justo encima de la puerta. Al salir de esas filas, decideGhost
+    // retoma el objetivo normal (scatter/chase).
+    const insidePen =
+      g.x >= PEN_BOUNDS.minX && g.x <= PEN_BOUNDS.maxX &&
+      g.y >= PEN_BOUNDS.minY && g.y <= PEN_BOUNDS.maxY;
+    const target = insidePen ? PEN_EXIT : ghostTarget( game, g );
+
+    decideGhost( game, g, target );
     if ( !canMove( grid, g.x, g.y, g.dir, 'ghost' ) ) return;
   }
 
