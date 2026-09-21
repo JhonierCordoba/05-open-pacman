@@ -281,6 +281,11 @@ function moveGhost( game, g ) {
     g.x = Math.round( g.x );
     g.y = Math.round( g.y );
 
+    // Ojos que llegan a su celda del pen esperan ahí hasta el final del efecto.
+    if ( g.state === 'eyes' && game.powerOn && g.x === g.home.x && g.y === g.home.y ) {
+      return;
+    }
+
     decideGhost( game, g );
     if ( !canMove( grid, g.x, g.y, g.dir, 'ghost' ) ) return;
   }
@@ -326,7 +331,16 @@ function update( game ) {
 
   for ( const g of game.ghosts ) {
     if ( collides( game.pacman, g ) ) {
-      if ( game.powerOn ) continue; // invencible: nunca se resta vida
+      if ( game.powerOn ) {
+        // Comer un fantasma frightened: puntos en cadena y se vuelve ojos.
+        if ( g.state === 'frightened' ) {
+          game.score += FEAR_CHAIN[ game.fearChain ];
+          game.fearChain = Math.min( game.fearChain + 1, 3 );
+          g.state = 'eyes';
+          g.speed = EYES_SPEED;
+        }
+        continue; // invencible: nunca se resta vida
+      }
       game.lives--;
       if ( game.lives <= 0 ) {
         game.state = 'lost';
