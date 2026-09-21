@@ -17,6 +17,14 @@ const SCATTER_SECONDS = 7;
 const CHASE_SECONDS = 20;
 const DT = 1 / 60;
 
+const POWER_PELLET_SECONDS = 6;
+const POWER_PELLET_SCORE = 50;
+const FRIGHT_SPEED = 1 / 6;        // pacman durante el efecto (alinea cada 6 frames)
+const FRIGHT_GHOST_SPEED = 1 / 15; // fantasmas frightened
+const EYES_SPEED = 1 / 7;          // ojos volviendo al pen
+const BLINK_SECONDS = 2;
+const FEAR_CHAIN = [ 200, 400, 800, 1600 ];
+
 // Por tipo de fantasma: velocidad, retardo de salida (s) y esquina de scatter.
 const GHOST_CONFIG = {
   chaser:   { speed: 1 / 10, releaseAt: 0, corner: { x: 26, y: 0  } },
@@ -40,6 +48,9 @@ function createGame() {
     score: 0,
     lives: 3,
     dotsRemaining: dots,
+    powerOn: false,   // efecto activo
+    powerLeft: 0,     // segundos restantes
+    fearChain: 0,     // indice en FEAR_CHAIN (0..3)
     time: 0,
     grid,
     pacman: {
@@ -49,7 +60,7 @@ function createGame() {
       nextDir: null,
       speed: PACMAN_SPEED,
     },
-    ghosts: GHOST_STARTS.map( ( g ) => {
+    ghosts: GHOST_STARTS.map( ( g, i ) => {
       const cfg = GHOST_CONFIG[ g.kind ];
       return {
         x: g.x,
@@ -59,6 +70,8 @@ function createGame() {
         releaseAt: cfg.releaseAt,
         released: false,
         kind: g.kind,
+        state: 'normal',        // 'normal' | 'frightened' | 'eyes'
+        home: GHOST_STARTS[ i ],
       };
     } ),
   };
@@ -112,12 +125,20 @@ function movePacman( game ) {
       p.dir = p.nextDir;
       p.nextDir = null;
     }
-    // Comer dot o pellet (provisional: el pellet cuenta como dot por ahora).
+    // Comer dot.
     const cell = grid[ p.y ][ p.x ];
-    if ( cell === 2 || cell === 4 ) {
+    if ( cell === 2 ) {
       grid[ p.y ][ p.x ] = 0;
       game.score += 10;
       game.dotsRemaining--;
+    }
+    // Comer power pellet: activa el efecto.
+    if ( cell === 4 ) {
+      grid[ p.y ][ p.x ] = 0;
+      game.score += POWER_PELLET_SCORE;
+      game.dotsRemaining--;
+      game.powerOn = true;
+      game.powerLeft = POWER_PELLET_SECONDS;
     }
     // Si no puede seguir, se detiene en la celda.
     if ( !canMove( grid, p.x, p.y, p.dir, 'pacman' ) ) return;
@@ -246,6 +267,11 @@ function update( game ) {
   game.time += DT;
   const cycle = SCATTER_SECONDS + CHASE_SECONDS;
   game.phase = game.time % cycle < SCATTER_SECONDS ? 'scatter' : 'chase';
+
+  if ( game.powerOn ) {
+    game.powerLeft -= DT;
+    if ( game.powerLeft <= 0 ) game.powerOn = false;
+  }
 
   movePacman( game );
   game.ghosts.forEach( ( g ) => moveGhost( game, g ) );
