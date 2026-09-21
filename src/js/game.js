@@ -13,6 +13,18 @@ const OPPOSITE = { left: 'right', right: 'left', up: 'down', down: 'up' };
 const PACMAN_SPEED = 0.125; // 1/8 celda/frame -> alinea cada 8 frames
 const GHOST_SPEED = 0.1;    // 1/10 celda/frame
 
+const SCATTER_SECONDS = 7;
+const CHASE_SECONDS = 20;
+const DT = 1 / 60;
+
+// Por tipo de fantasma: velocidad, retardo de salida (s) y esquina de scatter.
+const GHOST_CONFIG = {
+  chaser:   { speed: 0.125, releaseAt: 0, corner: { x: 26, y: 0  } },
+  ambusher: { speed: 0.1,   releaseAt: 0, corner: { x: 0,  y: 0  } },
+  flanker:  { speed: 0.1,   releaseAt: 2, corner: { x: 26, y: 30 } },
+  shy:      { speed: 0.1,   releaseAt: 4, corner: { x: 0,  y: 30 } },
+};
+
 // Crea una partida nueva. Copia MAZE (pristino) a game.grid para poder comer
 // dots sin destruir el original, y reiniciar.
 function createGame() {
@@ -36,13 +48,18 @@ function createGame() {
       nextDir: null,
       speed: PACMAN_SPEED,
     },
-    ghosts: GHOST_STARTS.map( ( g ) => ( {
-      x: g.x,
-      y: g.y,
-      dir: 'up',
-      speed: GHOST_SPEED,
-      kind: g.kind,
-    } ) ),
+    ghosts: GHOST_STARTS.map( ( g ) => {
+      const cfg = GHOST_CONFIG[ g.kind ];
+      return {
+        x: g.x,
+        y: g.y,
+        dir: 'up',
+        speed: cfg.speed,
+        releaseAt: cfg.releaseAt,
+        released: false,
+        kind: g.kind,
+      };
+    } ),
   };
 }
 
