@@ -81,6 +81,15 @@ function aligned( v ) {
   return Math.abs( v - Math.round( v ) ) < 1e-3;
 }
 
+// Recoloca a un actor en la celda mas cercana. Se usa antes de cambiar la
+// velocidad: las fracciones unitarias solo conservan la alineacion a celdas
+// si se parte de una celda (si no, el actor nunca vuelve a alinearse y se
+// mete por las paredes).
+function snapToCell( a ) {
+  a.x = Math.round( a.x );
+  a.y = Math.round( a.y );
+}
+
 // Una celda es muro para el actor dado?
 //   pacman: bloqueado por pared (1) y puerta (3)
 //   ghost:  bloqueado solo por pared (1)
@@ -154,8 +163,10 @@ function startPower( game ) {
   game.powerOn = true;
   game.powerLeft = POWER_PELLET_SECONDS;
   game.fearChain = 0;
+  snapToCell( game.pacman );
   game.pacman.speed = FRIGHT_SPEED;
   game.ghosts.forEach( ( g ) => {
+    snapToCell( g );
     g.state = 'frightened';
     g.speed = FRIGHT_GHOST_SPEED;
   } );
@@ -165,8 +176,10 @@ function startPower( game ) {
 // reaparecen como fantasma normal saliendo escalonado.
 function endPower( game ) {
   game.powerOn = false;
+  snapToCell( game.pacman );
   game.pacman.speed = PACMAN_SPEED;
   game.ghosts.forEach( ( g ) => {
+    snapToCell( g );
     g.speed = GHOST_CONFIG[ g.kind ].speed;
     if ( g.state === 'eyes' ) {
       g.state = 'normal';
@@ -344,6 +357,7 @@ function update( game ) {
         if ( g.state === 'frightened' ) {
           game.score += FEAR_CHAIN[ game.fearChain ];
           game.fearChain = Math.min( game.fearChain + 1, 3 );
+          snapToCell( g );
           g.state = 'eyes';
           g.speed = EYES_SPEED;
         }
