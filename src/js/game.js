@@ -10,7 +10,7 @@ const DIRS = {
 };
 const OPPOSITE = { left: 'right', right: 'left', up: 'down', down: 'up' };
 
-const PACMAN_SPEED = 0.125; // 1/8 celda/frame -> alinea cada 8 frames
+const PACMAN_SPEED = 1 / 9; // 0.111... -> alinea cada 9 frames
 const GHOST_SPEED = 0.1;    // 1/10 celda/frame
 
 const SCATTER_SECONDS = 7;
@@ -19,10 +19,10 @@ const DT = 1 / 60;
 
 // Por tipo de fantasma: velocidad, retardo de salida (s) y esquina de scatter.
 const GHOST_CONFIG = {
-  chaser:   { speed: 0.125, releaseAt: 0, corner: { x: 26, y: 0  } },
-  ambusher: { speed: 0.1,   releaseAt: 0, corner: { x: 0,  y: 0  } },
-  flanker:  { speed: 0.1,   releaseAt: 2, corner: { x: 26, y: 30 } },
-  shy:      { speed: 0.1,   releaseAt: 4, corner: { x: 0,  y: 30 } },
+  chaser:   { speed: 1 / 10, releaseAt: 0, corner: { x: 26, y: 0  } },
+  ambusher: { speed: 1 / 12, releaseAt: 0, corner: { x: 0,  y: 0  } },
+  flanker:  { speed: 1 / 12, releaseAt: 2, corner: { x: 26, y: 30 } },
+  shy:      { speed: 1 / 15, releaseAt: 4, corner: { x: 0,  y: 30 } },
 };
 
 // Crea una partida nueva. Copia MAZE (pristino) a game.grid para poder comer
