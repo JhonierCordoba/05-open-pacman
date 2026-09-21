@@ -10,7 +10,7 @@ const DIRS = {
 };
 const OPPOSITE = { left: 'right', right: 'left', up: 'down', down: 'up' };
 
-const PACMAN_SPEED = 0.125; // 1/8 celda/frame -> alinea cada 8 frames
+const PACMAN_SPEED = 1 / 9; // 0.111... -> alinea cada 9 frames
 const GHOST_SPEED = 0.1;    // 1/10 celda/frame
 
 const SCATTER_SECONDS = 7;
@@ -19,10 +19,10 @@ const DT = 1 / 60;
 
 // Por tipo de fantasma: velocidad, retardo de salida (s) y esquina de scatter.
 const GHOST_CONFIG = {
-  chaser:   { speed: 0.125, releaseAt: 0, corner: { x: 26, y: 0  } },
-  ambusher: { speed: 0.1,   releaseAt: 0, corner: { x: 0,  y: 0  } },
-  flanker:  { speed: 0.1,   releaseAt: 2, corner: { x: 26, y: 30 } },
-  shy:      { speed: 0.1,   releaseAt: 4, corner: { x: 0,  y: 30 } },
+  chaser:   { speed: 1 / 10, releaseAt: 0, corner: { x: 26, y: 0  } },
+  ambusher: { speed: 1 / 12, releaseAt: 0, corner: { x: 0,  y: 0  } },
+  flanker:  { speed: 1 / 12, releaseAt: 2, corner: { x: 26, y: 30 } },
+  shy:      { speed: 1 / 15, releaseAt: 4, corner: { x: 0,  y: 30 } },
 };
 
 // Crea una partida nueva. Copia MAZE (pristino) a game.grid para poder comer
@@ -164,9 +164,8 @@ function ghostTarget( game, g ) {
   return cfg.corner;
 }
 
-function decideGhost( game, g ) {
+function decideGhost( game, g, target ) {
   const grid = game.grid;
-  const target = ghostTarget( game, g );
 
   const options = Object.keys( DIRS ).filter(
     ( dir ) => dir !== OPPOSITE[ g.dir ] && canMove( grid, g.x, g.y, dir, 'ghost' )
@@ -203,7 +202,16 @@ function moveGhost( game, g ) {
   if ( aligned( g.x ) && aligned( g.y ) ) {
     g.x = Math.round( g.x );
     g.y = Math.round( g.y );
-    decideGhost( game, g );
+
+    // Dentro del pen (incluida la puerta): objetivo fijo de salida, la celda
+    // abierta justo encima de la puerta. Al salir de esas filas, decideGhost
+    // retoma el objetivo normal (scatter/chase).
+    const insidePen =
+      g.x >= PEN_BOUNDS.minX && g.x <= PEN_BOUNDS.maxX &&
+      g.y >= PEN_BOUNDS.minY && g.y <= PEN_BOUNDS.maxY;
+    const target = insidePen ? PEN_EXIT : ghostTarget( game, g );
+
+    decideGhost( game, g, target );
     if ( !canMove( grid, g.x, g.y, g.dir, 'ghost' ) ) return;
   }
 
@@ -223,6 +231,9 @@ function resetPositions( game ) {
     g.x = GHOST_STARTS[ i ].x;
     g.y = GHOST_STARTS[ i ].y;
     g.dir = 'up';
+    // Re-escalonar la salida sobre el tiempo actual de la partida.
+    g.released = false;
+    g.releaseAt = game.time + GHOST_CONFIG[ g.kind ].releaseAt;
   } );
 }
 
