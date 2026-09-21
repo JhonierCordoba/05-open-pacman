@@ -231,6 +231,9 @@ function resetPositions( game ) {
     g.x = GHOST_STARTS[ i ].x;
     g.y = GHOST_STARTS[ i ].y;
     g.dir = 'up';
+    // Re-escalonar la salida sobre el tiempo actual de la partida.
+    g.released = false;
+    g.releaseAt = game.time + GHOST_CONFIG[ g.kind ].releaseAt;
   } );
 }
 
