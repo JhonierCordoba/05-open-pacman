@@ -50,6 +50,13 @@ function parseTile( ch ) {
 const MAZE = MAZE_STR.map( ( row ) => row.split( '' ).map( parseTile ) );
 
 const TUNNEL_ROW = 14;
+
+// Geometria del pen (fuente de verdad: el grid de arriba).
+// Interior del pen: filas 13-15, cols 11-16; puerta en fila 12, cols 13-14.
+const PEN_BOUNDS = { minX: 11, minY: 13, maxX: 15, maxY: 15 };
+const DOOR_COLS = [ 13, 14 ];
+const PEN_EXIT = { x: 14, y: 11 }; // celda abierta justo encima de la puerta
+
 const PACMAN_START = { x: 13, y: 23 };
 const GHOST_STARTS = [
   { x: 13, y: 13, kind: 'chaser' },
@@ -62,3 +69,6 @@ window.MAZE = MAZE;
 window.TUNNEL_ROW = TUNNEL_ROW;
 window.PACMAN_START = PACMAN_START;
 window.GHOST_STARTS = GHOST_STARTS;
+window.PEN_BOUNDS = PEN_BOUNDS;
+window.DOOR_COLS = DOOR_COLS;
+window.PEN_EXIT = PEN_EXIT;
