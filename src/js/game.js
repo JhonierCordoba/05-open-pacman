@@ -163,6 +163,12 @@ function moveGhost( game, g ) {
   const grid = game.grid;
   const width = grid[ 0 ].length;
 
+  // Liberacion escalonada: esperar hasta alcanzar el retardo de salida.
+  if ( !g.released ) {
+    if ( game.time < g.releaseAt ) return;
+    g.released = true;
+  }
+
   if ( aligned( g.x ) && aligned( g.y ) ) {
     g.x = Math.round( g.x );
     g.y = Math.round( g.y );
